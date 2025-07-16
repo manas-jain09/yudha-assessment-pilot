@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Edit, Trash2, Users as UsersIcon, BookOpen, FileText, ChevronDown } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -17,6 +18,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { StudentFilters } from "@/components/users/StudentFilters";
+import { BulkActions } from "@/components/users/BulkActions";
 
 const userSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -39,6 +42,14 @@ const Users: React.FC = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
+  const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+  
+  // Filter states
+  const [searchTerm, setSearchTerm] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("all");
+  const [divisionFilter, setDivisionFilter] = useState("all");
+  const [yearFilter, setYearFilter] = useState("all");
+  const [batchFilter, setBatchFilter] = useState("all");
 
   // Form hooks
   const createForm = useForm<UserFormData>({
@@ -120,6 +131,197 @@ const Users: React.FC = () => {
       if (error) throw error;
       return data;
     }
+  });
+
+  // Filter unique values for dropdowns
+  const filterOptions = useMemo(() => {
+    if (!students) return { departments: [], divisions: [], years: [], batches: [] };
+    
+    const departments = [...new Set(students.map(s => s.department).filter(Boolean))];
+    const divisions = [...new Set(students.map(s => s.division).filter(Boolean))];
+    const years = [...new Set(students.map(s => s.year).filter(Boolean))];
+    const batches = [...new Set(students.map(s => s.batch).filter(Boolean))];
+    
+    return { departments, divisions, years, batches };
+  }, [students]);
+
+  // Filtered students
+  const filteredStudents = useMemo(() => {
+    if (!students) return [];
+    
+    return students.filter(student => {
+      const matchesSearch = !searchTerm || 
+        student.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        student.email?.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesDepartment = departmentFilter === "all" || student.department === departmentFilter;
+      const matchesDivision = divisionFilter === "all" || student.division === divisionFilter;
+      const matchesYear = yearFilter === "all" || student.year === yearFilter;
+      const matchesBatch = batchFilter === "all" || student.batch === batchFilter;
+      
+      return matchesSearch && matchesDepartment && matchesDivision && matchesYear && matchesBatch;
+    });
+  }, [students, searchTerm, departmentFilter, divisionFilter, yearFilter, batchFilter]);
+
+  // Bulk assignment mutations
+  const bulkAssignLearningPathMutation = useMutation({
+    mutationFn: async ({ studentIds, learningPathId }: { studentIds: string[]; learningPathId: string }) => {
+      for (const studentId of studentIds) {
+        const { data: studentData, error: fetchError } = await supabase
+          .from('auth')
+          .select('assigned_learning_paths')
+          .eq('id', studentId)
+          .single();
+
+        if (fetchError) throw fetchError;
+
+        const currentPaths = studentData.assigned_learning_paths || [];
+        const updatedPaths = currentPaths.includes(learningPathId) 
+          ? currentPaths 
+          : [...currentPaths, learningPathId];
+
+        const { error } = await supabase
+          .from('auth')
+          .update({ assigned_learning_paths: updatedPaths })
+          .eq('id', studentId);
+
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['organization-students'] });
+      setSelectedStudents([]);
+      toast({
+        title: "Success",
+        description: "Learning path assigned to selected students",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to assign learning path",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const bulkUnassignLearningPathMutation = useMutation({
+    mutationFn: async ({ studentIds, learningPathId }: { studentIds: string[]; learningPathId: string }) => {
+      for (const studentId of studentIds) {
+        const { data: studentData, error: fetchError } = await supabase
+          .from('auth')
+          .select('assigned_learning_paths')
+          .eq('id', studentId)
+          .single();
+
+        if (fetchError) throw fetchError;
+
+        const currentPaths = studentData.assigned_learning_paths || [];
+        const updatedPaths = currentPaths.filter(path => path !== learningPathId);
+
+        const { error } = await supabase
+          .from('auth')
+          .update({ assigned_learning_paths: updatedPaths })
+          .eq('id', studentId);
+
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['organization-students'] });
+      setSelectedStudents([]);
+      toast({
+        title: "Success",
+        description: "Learning path unassigned from selected students",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to unassign learning path",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const bulkAssignAssessmentMutation = useMutation({
+    mutationFn: async ({ studentIds, assessmentCode }: { studentIds: string[]; assessmentCode: string }) => {
+      for (const studentId of studentIds) {
+        const { data: studentData, error: fetchError } = await supabase
+          .from('auth')
+          .select('assigned_assessments')
+          .eq('id', studentId)
+          .single();
+
+        if (fetchError) throw fetchError;
+
+        const currentAssessments = studentData.assigned_assessments || [];
+        const updatedAssessments = currentAssessments.includes(assessmentCode) 
+          ? currentAssessments 
+          : [...currentAssessments, assessmentCode];
+
+        const { error } = await supabase
+          .from('auth')
+          .update({ assigned_assessments: updatedAssessments })
+          .eq('id', studentId);
+
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['organization-students'] });
+      setSelectedStudents([]);
+      toast({
+        title: "Success",
+        description: "Assessment assigned to selected students",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to assign assessment",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const bulkUnassignAssessmentMutation = useMutation({
+    mutationFn: async ({ studentIds, assessmentCode }: { studentIds: string[]; assessmentCode: string }) => {
+      for (const studentId of studentIds) {
+        const { data: studentData, error: fetchError } = await supabase
+          .from('auth')
+          .select('assigned_assessments')
+          .eq('id', studentId)
+          .single();
+
+        if (fetchError) throw fetchError;
+
+        const currentAssessments = studentData.assigned_assessments || [];
+        const updatedAssessments = currentAssessments.filter(assessment => assessment !== assessmentCode);
+
+        const { error } = await supabase
+          .from('auth')
+          .update({ assigned_assessments: updatedAssessments })
+          .eq('id', studentId);
+
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['organization-students'] });
+      setSelectedStudents([]);
+      toast({
+        title: "Success",
+        description: "Assessment unassigned from selected students",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to unassign assessment",
+        variant: "destructive",
+      });
+    },
   });
 
   // Mutation to assign learning path to student
@@ -371,6 +573,30 @@ const Users: React.FC = () => {
     return allAssessments?.filter(assessment => organizationAssessments.includes(assessment.code)) || [];
   };
 
+  const handleSelectStudent = (studentId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedStudents(prev => [...prev, studentId]);
+    } else {
+      setSelectedStudents(prev => prev.filter(id => id !== studentId));
+    }
+  };
+
+  const handleSelectAllStudents = (checked: boolean) => {
+    if (checked) {
+      setSelectedStudents(filteredStudents.map(student => student.id));
+    } else {
+      setSelectedStudents([]);
+    }
+  };
+
+  const clearFilters = () => {
+    setSearchTerm("");
+    setDepartmentFilter("all");
+    setDivisionFilter("all");
+    setYearFilter("all");
+    setBatchFilter("all");
+  };
+
   if (isLoadingUsers || isLoadingStudents) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -566,7 +792,7 @@ const Users: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Student Management Section */}
+      {/* Enhanced Student Management Section */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -578,23 +804,80 @@ const Users: React.FC = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <StudentFilters
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            departmentFilter={departmentFilter}
+            setDepartmentFilter={setDepartmentFilter}
+            divisionFilter={divisionFilter}
+            setDivisionFilter={setDivisionFilter}
+            yearFilter={yearFilter}
+            setYearFilter={setYearFilter}
+            batchFilter={batchFilter}
+            setBatchFilter={setBatchFilter}
+            departments={filterOptions.departments}
+            divisions={filterOptions.divisions}
+            years={filterOptions.years}
+            batches={filterOptions.batches}
+            onClearFilters={clearFilters}
+          />
+
+          <BulkActions
+            selectedStudents={selectedStudents}
+            availableLearningPaths={getAvailableLearningPaths()}
+            availableAssessments={getAvailableAssessments()}
+            onAssignLearningPath={(learningPathId) => 
+              bulkAssignLearningPathMutation.mutate({ studentIds: selectedStudents, learningPathId })
+            }
+            onUnassignLearningPath={(learningPathId) => 
+              bulkUnassignLearningPathMutation.mutate({ studentIds: selectedStudents, learningPathId })
+            }
+            onAssignAssessment={(assessmentCode) => 
+              bulkAssignAssessmentMutation.mutate({ studentIds: selectedStudents, assessmentCode })
+            }
+            onUnassignAssessment={(assessmentCode) => 
+              bulkUnassignAssessmentMutation.mutate({ studentIds: selectedStudents, assessmentCode })
+            }
+            onClearSelection={() => setSelectedStudents([])}
+          />
+
           <div className="overflow-x-auto">
-            {students && students.length > 0 ? (
+            {filteredStudents && filteredStudents.length > 0 ? (
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={selectedStudents.length === filteredStudents.length}
+                        onCheckedChange={handleSelectAllStudents}
+                      />
+                    </TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
-                    <TableHead>Assigned Learning Paths</TableHead>
-                    <TableHead>Assigned Assessments</TableHead>
+                    <TableHead>Department</TableHead>
+                    <TableHead>Division</TableHead>
+                    <TableHead>Year</TableHead>
+                    <TableHead>Batch</TableHead>
+                    <TableHead>Learning Paths</TableHead>
+                    <TableHead>Assessments</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {students.map((student) => (
+                  {filteredStudents.map((student) => (
                     <TableRow key={student.id}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedStudents.includes(student.id)}
+                          onCheckedChange={(checked) => handleSelectStudent(student.id, checked as boolean)}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">{student.name || '-'}</TableCell>
                       <TableCell>{student.email}</TableCell>
+                      <TableCell>{student.department || '-'}</TableCell>
+                      <TableCell>{student.division || '-'}</TableCell>
+                      <TableCell>{student.year || '-'}</TableCell>
+                      <TableCell>{student.batch || '-'}</TableCell>
                       <TableCell>
                         <span className="text-xs text-gray-600">
                           {(student.assigned_learning_paths || []).length} paths
@@ -692,9 +975,9 @@ const Users: React.FC = () => {
               </Table>
             ) : (
               <div className="text-center py-6">
-                <p className="text-gray-500">No students found in your organization.</p>
+                <p className="text-gray-500">No students found matching your filters.</p>
                 <p className="text-sm text-gray-400 mt-2">
-                  Current organization ID: {user?.organization_id || 'Not set'}
+                  Try adjusting your search criteria or clearing filters.
                 </p>
               </div>
             )}
