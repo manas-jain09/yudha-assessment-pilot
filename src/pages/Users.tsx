@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Edit, Trash2, Users as UsersIcon, BookOpen, FileText, ChevronDown } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -20,6 +20,8 @@ import { useToast } from "@/hooks/use-toast";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { StudentFilters } from "@/components/users/StudentFilters";
 import { BulkActions } from "@/components/users/BulkActions";
+import { LearningPathAssignment } from "@/components/users/LearningPathAssignment";
+import { AssessmentAssignment } from "@/components/users/AssessmentAssignment";
 
 const userSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -324,7 +326,7 @@ const Users: React.FC = () => {
     },
   });
 
-  // Mutation to assign learning path to student
+  // Individual assignment mutations
   const assignLearningPathMutation = useMutation({
     mutationFn: async ({ studentId, learningPathId }: { studentId: string; learningPathId: string }) => {
       // Get current assigned learning paths
@@ -364,10 +366,44 @@ const Users: React.FC = () => {
     },
   });
 
-  // Mutation to assign assessment to student
+  const unassignLearningPathMutation = useMutation({
+    mutationFn: async ({ studentId, learningPathId }: { studentId: string; learningPathId: string }) => {
+      const { data: studentData, error: fetchError } = await supabase
+        .from('auth')
+        .select('assigned_learning_paths')
+        .eq('id', studentId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const currentPaths = studentData.assigned_learning_paths || [];
+      const updatedPaths = currentPaths.filter(path => path !== learningPathId);
+
+      const { error } = await supabase
+        .from('auth')
+        .update({ assigned_learning_paths: updatedPaths })
+        .eq('id', studentId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['organization-students'] });
+      toast({
+        title: "Success",
+        description: "Learning path unassigned successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to unassign learning path",
+        variant: "destructive",
+      });
+    },
+  });
+
   const assignAssessmentMutation = useMutation({
     mutationFn: async ({ studentId, assessmentCode }: { studentId: string; assessmentCode: string }) => {
-      // Get current assigned assessments
       const { data: studentData, error: fetchError } = await supabase
         .from('auth')
         .select('assigned_assessments')
@@ -399,6 +435,42 @@ const Users: React.FC = () => {
       toast({
         title: "Error",
         description: error.message || "Failed to assign assessment",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const unassignAssessmentMutation = useMutation({
+    mutationFn: async ({ studentId, assessmentCode }: { studentId: string; assessmentCode: string }) => {
+      const { data: studentData, error: fetchError } = await supabase
+        .from('auth')
+        .select('assigned_assessments')
+        .eq('id', studentId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const currentAssessments = studentData.assigned_assessments || [];
+      const updatedAssessments = currentAssessments.filter(assessment => assessment !== assessmentCode);
+
+      const { error } = await supabase
+        .from('auth')
+        .update({ assigned_assessments: updatedAssessments })
+        .eq('id', studentId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['organization-students'] });
+      toast({
+        title: "Success",
+        description: "Assessment unassigned successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to unassign assessment",
         variant: "destructive",
       });
     },
@@ -890,83 +962,57 @@ const Users: React.FC = () => {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          {/* Learning Paths Dropdown */}
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
+                          {/* Learning Paths Popover */}
+                          <Popover>
+                            <PopoverTrigger asChild>
                               <Button variant="outline" size="sm">
                                 <BookOpen className="h-4 w-4 mr-1" />
                                 Learning Paths
                                 <ChevronDown className="h-4 w-4 ml-1" />
                               </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56">
-                              {getAvailableLearningPaths().map((path) => (
-                                <DropdownMenuItem
-                                  key={path.id}
-                                  onClick={() => assignLearningPathMutation.mutate({
-                                    studentId: student.id,
-                                    learningPathId: path.id
-                                  })}
-                                  disabled={
-                                    (student.assigned_learning_paths || []).includes(path.id) ||
-                                    assignLearningPathMutation.isPending
-                                  }
-                                >
-                                  <div className="flex flex-col">
-                                    <span className="font-medium">{path.title}</span>
-                                    <span className="text-xs text-gray-500">{path.difficulty}</span>
-                                  </div>
-                                  {(student.assigned_learning_paths || []).includes(path.id) && (
-                                    <span className="ml-auto text-xs text-green-600">✓ Assigned</span>
-                                  )}
-                                </DropdownMenuItem>
-                              ))}
-                              {getAvailableLearningPaths().length === 0 && (
-                                <DropdownMenuItem disabled>
-                                  No learning paths available
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                            </PopoverTrigger>
+                            <PopoverContent align="end" className="p-0">
+                              <LearningPathAssignment
+                                studentId={student.id}
+                                studentName={student.name || student.email}
+                                assignedLearningPaths={student.assigned_learning_paths || []}
+                                availableLearningPaths={getAvailableLearningPaths()}
+                                onAssign={(studentId, learningPathId) => 
+                                  assignLearningPathMutation.mutate({ studentId, learningPathId })
+                                }
+                                onUnassign={(studentId, learningPathId) => 
+                                  unassignLearningPathMutation.mutate({ studentId, learningPathId })
+                                }
+                                isLoading={assignLearningPathMutation.isPending || unassignLearningPathMutation.isPending}
+                              />
+                            </PopoverContent>
+                          </Popover>
 
-                          {/* Assessments Dropdown */}
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
+                          {/* Assessments Popover */}
+                          <Popover>
+                            <PopoverTrigger asChild>
                               <Button variant="outline" size="sm">
                                 <FileText className="h-4 w-4 mr-1" />
                                 Assessments
                                 <ChevronDown className="h-4 w-4 ml-1" />
                               </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56">
-                              {getAvailableAssessments().map((assessment) => (
-                                <DropdownMenuItem
-                                  key={assessment.id}
-                                  onClick={() => assignAssessmentMutation.mutate({
-                                    studentId: student.id,
-                                    assessmentCode: assessment.code
-                                  })}
-                                  disabled={
-                                    (student.assigned_assessments || []).includes(assessment.code) ||
-                                    assignAssessmentMutation.isPending
-                                  }
-                                >
-                                  <div className="flex flex-col">
-                                    <span className="font-medium">{assessment.name}</span>
-                                    <span className="text-xs text-gray-500">Code: {assessment.code}</span>
-                                  </div>
-                                  {(student.assigned_assessments || []).includes(assessment.code) && (
-                                    <span className="ml-auto text-xs text-green-600">✓ Assigned</span>
-                                  )}
-                                </DropdownMenuItem>
-                              ))}
-                              {getAvailableAssessments().length === 0 && (
-                                <DropdownMenuItem disabled>
-                                  No assessments available
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                            </PopoverTrigger>
+                            <PopoverContent align="end" className="p-0">
+                              <AssessmentAssignment
+                                studentId={student.id}
+                                studentName={student.name || student.email}
+                                assignedAssessments={student.assigned_assessments || []}
+                                availableAssessments={getAvailableAssessments()}
+                                onAssign={(studentId, assessmentCode) => 
+                                  assignAssessmentMutation.mutate({ studentId, assessmentCode })
+                                }
+                                onUnassign={(studentId, assessmentCode) => 
+                                  unassignAssessmentMutation.mutate({ studentId, assessmentCode })
+                                }
+                                isLoading={assignAssessmentMutation.isPending || unassignAssessmentMutation.isPending}
+                              />
+                            </PopoverContent>
+                          </Popover>
                         </div>
                       </TableCell>
                     </TableRow>
