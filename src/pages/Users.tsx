@@ -102,9 +102,10 @@ const Users: React.FC = () => {
         .order('created_at', { ascending: false });
       
       if (error) throw error;
+      console.info('Loaded students count:', data?.length ?? 0);
       return data;
     },
-    enabled: !!user?.id && user?.role === 'admin' && !!user?.organization_id
+    enabled: !!user?.organization_id
   });
 
   // Query to fetch all learning paths
