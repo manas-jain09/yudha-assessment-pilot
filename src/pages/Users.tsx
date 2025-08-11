@@ -92,7 +92,7 @@ const Users: React.FC = () => {
 
   // Query to fetch students from the same organization
   const { data: students, isLoading: isLoadingStudents } = useQuery({
-    queryKey: ['organization-students', user?.organization_id],
+    queryKey: ['organization-students-full', user?.organization_id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('auth')
@@ -192,7 +192,7 @@ const Users: React.FC = () => {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organization-students'] });
+      queryClient.invalidateQueries({ queryKey: ['organization-students-full'] });
       setSelectedStudents([]);
       toast({
         title: "Success",
@@ -231,7 +231,7 @@ const Users: React.FC = () => {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organization-students'] });
+      queryClient.invalidateQueries({ queryKey: ['organization-students-full'] });
       setSelectedStudents([]);
       toast({
         title: "Success",
@@ -272,7 +272,7 @@ const Users: React.FC = () => {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organization-students'] });
+      queryClient.invalidateQueries({ queryKey: ['organization-students-full'] });
       setSelectedStudents([]);
       toast({
         title: "Success",
@@ -311,7 +311,7 @@ const Users: React.FC = () => {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organization-students'] });
+      queryClient.invalidateQueries({ queryKey: ['organization-students-full'] });
       setSelectedStudents([]);
       toast({
         title: "Success",
@@ -352,7 +352,7 @@ const Users: React.FC = () => {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organization-students'] });
+      queryClient.invalidateQueries({ queryKey: ['organization-students-full'] });
       toast({
         title: "Success",
         description: "Learning path assigned successfully",
@@ -388,7 +388,7 @@ const Users: React.FC = () => {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organization-students'] });
+      queryClient.invalidateQueries({ queryKey: ['organization-students-full'] });
       toast({
         title: "Success",
         description: "Learning path unassigned successfully",
@@ -426,7 +426,7 @@ const Users: React.FC = () => {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organization-students'] });
+      queryClient.invalidateQueries({ queryKey: ['organization-students-full'] });
       toast({
         title: "Success",
         description: "Assessment assigned successfully",
@@ -462,7 +462,7 @@ const Users: React.FC = () => {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organization-students'] });
+      queryClient.invalidateQueries({ queryKey: ['organization-students-full'] });
       toast({
         title: "Success",
         description: "Assessment unassigned successfully",
