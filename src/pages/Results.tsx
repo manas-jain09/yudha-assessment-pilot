@@ -159,9 +159,9 @@ const Results: React.FC = () => {
       }
       
       const studentIds = orgStudents.map(s => s.id);
-      console.log("Student IDs:", studentIds);
-      
-      let query = supabase.from('results').select(`
+      console.log("Student IDs count:", studentIds.length);
+
+      const selectColumns = `
         id,
         assessment_id,
         user_id,
@@ -173,39 +173,57 @@ const Results: React.FC = () => {
         is_cheated,
         assessments(name, code, is_ai_proctored),
         auth(name, email, prn, department)
-      `)
-      .in('assessment_id', assessmentIds)
-      .in('user_id', studentIds);
-      
-      const { data, error } = await query.order('completed_at', { ascending: false });
-      
-      if (error) {
-        console.error("Error fetching results:", error);
-        throw error;
+      `;
+
+      // Chunk large user_id list to avoid URL length limits
+      const chunkSize = 100;
+      const chunks: string[][] = [];
+      for (let i = 0; i < studentIds.length; i += chunkSize) {
+        chunks.push(studentIds.slice(i, i + chunkSize));
       }
-      
-      console.log("Fetched results:", data);
-      
-      return data.map(result => ({
-        id: result.id,
-        assessment_id: result.assessment_id,
-        user_id: result.user_id,
-        userName: result.auth.name || 'Unknown',
-        userEmail: result.auth.email,
-        userPrn: result.auth.prn,
-        userDepartment: result.auth.department,
-        total_score: result.total_score,
-        percentage: result.percentage,
-        total_marks: result.total_marks,
-        completed_at: result.completed_at,
-        created_at: result.created_at,
-        is_cheated: result.is_cheated,
-        assessment: {
-          name: result.assessments.name,
-          code: result.assessments.code,
-          is_ai_proctored: result.assessments.is_ai_proctored
-        }
-      }));
+      console.log("Fetching results in", chunks.length, "chunks");
+
+      const resultsArrays = await Promise.all(
+        chunks.map(async (chunk) => {
+          const { data, error } = await supabase
+            .from('results')
+            .select(selectColumns)
+            .in('assessment_id', assessmentIds)
+            .in('user_id', chunk)
+            .order('completed_at', { ascending: false });
+          if (error) {
+            console.error("Chunk fetch error:", error);
+            throw error;
+          }
+          return data || [];
+        })
+      );
+
+      const merged = ([] as any[]).concat(...resultsArrays);
+      console.log("Merged results count:", merged.length);
+
+      return merged
+        .map((result: any) => ({
+          id: result.id,
+          assessment_id: result.assessment_id,
+          user_id: result.user_id,
+          userName: result.auth?.name || 'Unknown',
+          userEmail: result.auth?.email,
+          userPrn: result.auth?.prn,
+          userDepartment: result.auth?.department,
+          total_score: result.total_score,
+          percentage: result.percentage,
+          total_marks: result.total_marks,
+          completed_at: result.completed_at,
+          created_at: result.created_at,
+          is_cheated: result.is_cheated,
+          assessment: {
+            name: result.assessments?.name,
+            code: result.assessments?.code,
+            is_ai_proctored: result.assessments?.is_ai_proctored
+          }
+        }))
+        .sort((a, b) => new Date(b.completed_at || b.created_at).getTime() - new Date(a.completed_at || a.created_at).getTime());
     },
     enabled: !!user?.id && user?.role === 'admin' && !!orgAssessments && orgAssessments.length > 0
   });
