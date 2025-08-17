@@ -87,33 +87,36 @@ const Dashboard: React.FC = () => {
 
   // Query to fetch results for assigned assessments only from organization students
   const { data: results, isLoading: isLoadingResults } = useQuery({
-    queryKey: ['organization-results', user?.organization_id, assessments, orgStudents],
+    queryKey: ['organization-results', user?.organization_id, assessments],
     queryFn: async () => {
       console.log("Dashboard - Fetching results");
-      if (!assessments || assessments.length === 0 || !orgStudents || orgStudents.length === 0) {
-        console.log("Dashboard - No assessments or students available");
+      if (!assessments || assessments.length === 0) {
+        console.log("Dashboard - No assessments available");
         return [];
       }
       
       const assessmentIds = assessments.map(a => a.id);
-      const studentIds = orgStudents.map(s => s.id);
       console.log("Dashboard - Assessment IDs:", assessmentIds);
-      console.log("Dashboard - Student IDs:", studentIds);
       
+      // Fetch results filtering by organization_id and assessment_ids
+      // This is more efficient than filtering by individual user IDs
       const { data, error } = await supabase
         .from('results')
-        .select('*')
+        .select(`
+          *,
+          auth!inner(organization_id)
+        `)
         .in('assessment_id', assessmentIds)
-        .in('user_id', studentIds);
+        .eq('auth.organization_id', user?.organization_id);
       
       if (error) {
         console.error("Dashboard - Error fetching results:", error);
         throw error;
       }
       console.log("Dashboard - Fetched results:", data);
-      return data;
+      return data || [];
     },
-    enabled: !!assessments && assessments.length > 0 && !!orgStudents && orgStudents.length > 0
+    enabled: !!assessments && assessments.length > 0 && !!user?.organization_id
   });
 
   // Calculate statistics based on fetched data
