@@ -289,11 +289,13 @@ const Users: React.FC = () => {
       console.log('Bulk assessment assignment completed successfully');
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organization-students-full'] });
+      console.log('Bulk assessment assignment completed successfully');
+      queryClient.invalidateQueries({ queryKey: ['organization-students-full', user?.organization_id] });
+      queryClient.invalidateQueries({ queryKey: ['assessments'] });
       setSelectedStudents([]);
       toast({
         title: "Success",
-        description: "Assessment assigned to selected students",
+        description: `Assessment assigned to ${selectedStudents.length} students`,
       });
     },
     onError: (error: any) => {
