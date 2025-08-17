@@ -249,27 +249,44 @@ const Users: React.FC = () => {
 
   const bulkAssignAssessmentMutation = useMutation({
     mutationFn: async ({ studentIds, assessmentCode }: { studentIds: string[]; assessmentCode: string }) => {
+      console.log('Starting bulk assessment assignment for:', { studentIds, assessmentCode });
+      
+      if (!studentIds || studentIds.length === 0) {
+        throw new Error('No students selected');
+      }
+      
       for (const studentId of studentIds) {
+        console.log('Processing student:', studentId);
+        
         const { data: studentData, error: fetchError } = await supabase
           .from('auth')
           .select('assigned_assessments')
           .eq('id', studentId)
           .single();
 
-        if (fetchError) throw fetchError;
+        if (fetchError) {
+          console.error('Fetch error for student:', studentId, fetchError);
+          throw fetchError;
+        }
 
         const currentAssessments = studentData.assigned_assessments || [];
         const updatedAssessments = currentAssessments.includes(assessmentCode) 
           ? currentAssessments 
           : [...currentAssessments, assessmentCode];
 
+        console.log('Updating student:', studentId, 'from:', currentAssessments, 'to:', updatedAssessments);
+
         const { error } = await supabase
           .from('auth')
           .update({ assigned_assessments: updatedAssessments })
           .eq('id', studentId);
 
-        if (error) throw error;
+        if (error) {
+          console.error('Update error for student:', studentId, error);
+          throw error;
+        }
       }
+      console.log('Bulk assessment assignment completed successfully');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['organization-students-full'] });
@@ -905,9 +922,10 @@ const Users: React.FC = () => {
             onUnassignLearningPath={(learningPathId) => 
               bulkUnassignLearningPathMutation.mutate({ studentIds: selectedStudents, learningPathId })
             }
-            onAssignAssessment={(assessmentCode) => 
-              bulkAssignAssessmentMutation.mutate({ studentIds: selectedStudents, assessmentCode })
-            }
+            onAssignAssessment={(assessmentCode) => {
+              console.log('Bulk assign assessment called with:', { selectedStudents, assessmentCode });
+              bulkAssignAssessmentMutation.mutate({ studentIds: selectedStudents, assessmentCode });
+            }}
             onUnassignAssessment={(assessmentCode) => 
               bulkUnassignAssessmentMutation.mutate({ studentIds: selectedStudents, assessmentCode })
             }

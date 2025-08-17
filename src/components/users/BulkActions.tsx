@@ -98,14 +98,17 @@ export const BulkActions: React.FC<BulkActionsProps> = ({
                     <span className="text-xs text-gray-500 ml-2">(Code: {assessment.code})</span>
                   </div>
                   <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onAssignAssessment(assessment.code)}
-                      className="text-xs"
-                    >
-                      Assign
-                    </Button>
+                     <Button
+                       variant="outline"
+                       size="sm"
+                       onClick={() => {
+                         console.log('Assigning assessment:', assessment.code, 'to students:', selectedStudents);
+                         onAssignAssessment(assessment.code);
+                       }}
+                       className="text-xs"
+                     >
+                       Assign
+                     </Button>
                     <Button
                       variant="outline"
                       size="sm"
