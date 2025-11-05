@@ -14,7 +14,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { supabase } from "@/integrations/supabase/client";
+import { apiClient } from "@/lib/api-client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -78,14 +78,7 @@ const Users: React.FC = () => {
   const { data: organizationData } = useQuery({
     queryKey: ['organization-data', user?.organization_id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('organizations')
-        .select('assigned_learning_paths, assigned_assessments_code')
-        .eq('id', user?.organization_id)
-        .single();
-      
-      if (error) throw error;
-      return data;
+      return await apiClient.organizations.getById(user?.organization_id);
     },
     enabled: !!user?.organization_id
   });
@@ -94,14 +87,7 @@ const Users: React.FC = () => {
   const { data: students, isLoading: isLoadingStudents } = useQuery({
     queryKey: ['organization-students-full', user?.organization_id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('auth')
-        .select('*')
-        .eq('organization_id', user?.organization_id)
-        .eq('role', 'student')
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
+      const data = await apiClient.users.getByOrganization(user?.organization_id);
       console.info('Loaded students count:', data?.length ?? 0);
       return data;
     },

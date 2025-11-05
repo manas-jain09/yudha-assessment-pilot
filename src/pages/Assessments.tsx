@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { apiClient } from "@/lib/api-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Assessment } from "@/types/assessment";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -35,14 +35,7 @@ const Assessments: React.FC = () => {
   const { data: organization } = useQuery({
     queryKey: ['organization', user?.organization_id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('organizations')
-        .select('assigned_assessments_code')
-        .eq('id', user?.organization_id)
-        .single();
-      
-      if (error) throw error;
-      return data;
+      return await apiClient.organizations.getById(user?.organization_id);
     },
     enabled: !!user?.organization_id && user?.role === 'admin'
   });
@@ -57,14 +50,7 @@ const Assessments: React.FC = () => {
         return [];
       }
 
-      const { data, error } = await supabase
-        .from('assessments')
-        .select('*')
-        .in('code', assignedCodes)
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      return data as Assessment[];
+      return await apiClient.assessments.getByCodes(assignedCodes) as Assessment[];
     },
     enabled: !!user?.id && user?.role === 'admin' && !!organization
   });
@@ -72,13 +58,7 @@ const Assessments: React.FC = () => {
   // Delete assessment mutation
   const deleteAssessmentMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('assessments')
-        .delete()
-        .eq('id', id);
-      
-      if (error) throw error;
-      return id;
+      return await apiClient.assessments.delete(id);
     },
     onSuccess: () => {
       setIsDeleteDialogOpen(false);

@@ -1,6 +1,7 @@
 
+
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { apiClient } from '@/lib/api-client';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 
@@ -45,17 +46,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const login = async (email: string, password: string) => {
     setLoading(true);
     try {
-      // Query the auth table to check if user exists and is an admin
-      const { data, error } = await supabase
-        .from('auth')
-        .select('*')
-        .eq('email', email)
-        .eq('role', 'admin')
-        .single();
-
-      if (error) {
-        throw new Error('Authentication failed');
-      }
+      // Authenticate user through edge function
+      const data = await apiClient.users.authenticate(email, password);
 
       if (!data) {
         throw new Error('User not found or not an admin');
